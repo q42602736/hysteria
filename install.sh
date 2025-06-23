@@ -246,7 +246,8 @@ collect_config() {
     echo "伪装网站: $MASQ_URL"
     echo
     
-    read -p "确认配置无误? (y/n): " CONFIRM
+    read -p "确认配置无误? (y/n) [默认: y]: " CONFIRM
+    CONFIRM=${CONFIRM:-y}
     if [[ $CONFIRM != "y" && $CONFIRM != "Y" ]]; then
         print_message $YELLOW "配置已取消"
         exit 0
