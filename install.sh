@@ -296,8 +296,8 @@ sspanel:
   apiKey: $API_KEY
   nodeID: $NODE_ID
   nodeType: hysteria2
-  pullInterval: 60
-  pushInterval: 300
+  pullInterval: 10
+  pushInterval: 10
 
 listen: :$LISTEN_PORT
 
