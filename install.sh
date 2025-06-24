@@ -531,7 +531,7 @@ generate_config() {
 
 log:
   level: info
-  output: /var/log/hysteria.log
+  # output: /var/log/hysteria.log
 
 panelType: sspanel
 
