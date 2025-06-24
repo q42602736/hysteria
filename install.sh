@@ -497,6 +497,15 @@ EOF
 auth:
   type: sspanel
 
+quic:
+  initStreamReceiveWindow: 26843545    # 增加到25MB (官方推荐)
+  maxStreamReceiveWindow: 26843545     # 增加到25MB (官方推荐)
+  initConnReceiveWindow: 67108864      # 增加到64MB (官方推荐)
+  maxConnReceiveWindow: 67108864       # 增加到64MB (官方推荐)
+  maxIdleTimeout: 60s                  # 增加到60秒，减少频繁重连
+  maxIncomingStreams: 2048             # 增加并发流数量
+  disablePathMTUDiscovery: false
+
 bandwidth:
   up: $BANDWIDTH_UP
   down: $BANDWIDTH_DOWN
