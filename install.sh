@@ -307,13 +307,6 @@ safe_read() {
     local var_name="$2"
     local default_value="$3"
 
-    # 确保在交互式终端中
-    if [[ ! -t 0 ]]; then
-        print_message $RED "错误：脚本需要在交互式终端中运行"
-        print_message $YELLOW "请直接在终端中运行此脚本，不要使用管道或重定向"
-        exit 1
-    fi
-
     while true; do
         if [[ -n "$default_value" ]]; then
             echo -n "$prompt [默认: $default_value]: "
@@ -486,11 +479,23 @@ generate_certificate() {
         mkdir -p /etc/hysteria
         
         print_message $YELLOW "正在生成自签名证书..."
-        openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
-            -keyout "$KEY_PATH" \
-            -out "$CERT_PATH" \
-            -subj "/CN=$SERVER_DOMAIN" \
-            -days 36500
+
+        # 尝试使用EC密钥，如果失败则使用RSA密钥
+        if openssl ecparam -name prime256v1 -genkey -noout -out "$KEY_PATH" 2>/dev/null && \
+           openssl req -x509 -new -key "$KEY_PATH" \
+               -out "$CERT_PATH" \
+               -subj "/CN=$SERVER_DOMAIN" \
+               -days 36500 2>/dev/null; then
+            print_message $GREEN "✅ 使用EC密钥生成证书成功"
+        else
+            print_message $YELLOW "EC密钥生成失败，尝试使用RSA密钥..."
+            openssl req -x509 -nodes -newkey rsa:2048 \
+                -keyout "$KEY_PATH" \
+                -out "$CERT_PATH" \
+                -subj "/CN=$SERVER_DOMAIN" \
+                -days 36500
+            print_message $GREEN "✅ 使用RSA密钥生成证书成功"
+        fi
         
         # 设置权限
         chown root:root "$CERT_PATH" "$KEY_PATH"
