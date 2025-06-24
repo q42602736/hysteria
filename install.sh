@@ -309,13 +309,28 @@ safe_read() {
 
     while true; do
         if [[ -n "$default_value" ]]; then
-            echo -n "$prompt [默认: $default_value]: "
+            printf "%s [默认: %s]: " "$prompt" "$default_value"
         else
-            echo -n "$prompt: "
+            printf "%s: " "$prompt"
         fi
 
-        # 始终显示输入内容，方便用户确认
-        read input
+        # 使用更兼容的读取方式
+        if read -r input </dev/tty 2>/dev/null; then
+            # 成功从终端读取
+            :
+        elif read -r input; then
+            # 从标准输入读取
+            :
+        else
+            # 读取失败，使用默认值或报错
+            if [[ -n "$default_value" ]]; then
+                input="$default_value"
+                echo "$default_value"
+            else
+                print_message $RED "无法读取输入，请检查终端环境"
+                exit 1
+            fi
+        fi
 
         # 如果输入为空且有默认值，使用默认值
         if [[ -z "$input" && -n "$default_value" ]]; then
