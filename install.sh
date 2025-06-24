@@ -544,6 +544,18 @@ acl:
     
     # 2. 拒绝中国网站访问
     - reject(geosite:cn)
+resolver:
+  type: udp                            # UDP最快
+  udp:
+    addr: 1.1.1.1:53                  # Cloudflare DNS
+    timeout: 1s                        # 极短超时
+  tcp:
+    addr: 1.1.1.1:53                  # 备用TCP
+    timeout: 2s
+  # 备用DNS
+  fallback:
+    - addr: 8.8.8.8:53
+      timeout: 1s
 
 ignoreClientBandwidth: false
 disableUDP: false
