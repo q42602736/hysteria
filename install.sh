@@ -539,6 +539,7 @@ outbounds:
 # ACL分流规则
 acl:
   inline:
+    - ipv4_only(suffix:gstatic.com)
     # 1. 拒绝中国IP访问
     - reject(geoip:cn)
     
