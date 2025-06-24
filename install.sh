@@ -627,7 +627,6 @@ resolver:
     - addr: 8.8.8.8:53
       timeout: 1s
 
-ignoreClientBandwidth: false
 disableUDP: false
 udpIdleTimeout: 60s
 EOF
@@ -765,17 +764,97 @@ diagnose_service() {
     return 0
 }
 
+# 检查并释放80端口
+check_and_free_port80() {
+    print_message $YELLOW "检查80端口占用情况..."
+
+    if ! netstat -tlnp | grep :80 >/dev/null 2>&1; then
+        print_message $GREEN "80端口未被占用，可以申请ACME证书"
+        return 0
+    fi
+
+    # 获取占用80端口的进程信息
+    local port80_info=$(netstat -tlnp | grep :80 | head -1)
+    local port80_process=$(echo "$port80_info" | awk '{print $7}')
+    local port80_pid=$(echo "$port80_process" | cut -d'/' -f1)
+    local port80_name=$(echo "$port80_process" | cut -d'/' -f2)
+
+    print_message $YELLOW "80端口被占用: PID=$port80_pid, 进程=$port80_name"
+
+    # 尝试停止常见的Web服务
+    print_message $YELLOW "尝试停止常见的Web服务..."
+    local services_stopped=()
+
+    for service in nginx apache2 httpd lighttpd caddy; do
+        if systemctl is-active --quiet "$service" 2>/dev/null; then
+            print_message $YELLOW "停止服务: $service"
+            if systemctl stop "$service" 2>/dev/null; then
+                services_stopped+=("$service")
+                print_message $GREEN "✅ 成功停止: $service"
+            else
+                print_message $RED "❌ 停止失败: $service"
+            fi
+        fi
+    done
+
+    # 等待服务完全停止
+    sleep 3
+
+    # 再次检查80端口
+    if ! netstat -tlnp | grep :80 >/dev/null 2>&1; then
+        print_message $GREEN "✅ 80端口已释放，可以申请ACME证书"
+        if [[ ${#services_stopped[@]} -gt 0 ]]; then
+            print_message $BLUE "已停止的服务: ${services_stopped[*]}"
+            print_message $BLUE "证书申请完成后，您可以手动重启这些服务"
+        fi
+        return 0
+    fi
+
+    # 如果还是被占用，尝试强制终止进程
+    local new_port80_info=$(netstat -tlnp | grep :80 | head -1)
+    local new_port80_process=$(echo "$new_port80_info" | awk '{print $7}')
+    local new_port80_pid=$(echo "$new_port80_process" | cut -d'/' -f1)
+    local new_port80_name=$(echo "$new_port80_process" | cut -d'/' -f2)
+
+    print_message $YELLOW "80端口仍被占用: PID=$new_port80_pid, 进程=$new_port80_name"
+
+    # 询问是否强制终止进程
+    echo
+    print_message $YELLOW "是否强制终止占用80端口的进程? (y/n) [默认: n]"
+    read -p "请选择: " force_kill
+
+    if [[ "$force_kill" == "y" || "$force_kill" == "Y" ]]; then
+        print_message $YELLOW "强制终止进程 PID=$new_port80_pid ($new_port80_name)..."
+        if kill -9 "$new_port80_pid" 2>/dev/null; then
+            sleep 2
+            if ! netstat -tlnp | grep :80 >/dev/null 2>&1; then
+                print_message $GREEN "✅ 进程已终止，80端口已释放"
+                return 0
+            else
+                print_message $RED "❌ 进程终止失败，80端口仍被占用"
+            fi
+        else
+            print_message $RED "❌ 无法终止进程 PID=$new_port80_pid"
+        fi
+    fi
+
+    # 最终检查失败
+    print_message $RED "❌ 无法释放80端口，ACME证书申请可能失败"
+    print_message $YELLOW "建议："
+    echo "1. 手动停止占用80端口的服务"
+    echo "2. 或者选择使用自签名证书"
+    echo "3. 或者使用DNS验证方式申请证书"
+
+    return 1
+}
+
 # 启动服务
 start_service() {
     print_title "启动Hysteria2服务"
 
     # 如果使用ACME，确保80端口可用
     if [[ $CERT_TYPE == "1" ]]; then
-        print_message $YELLOW "检查80端口占用情况..."
-        if netstat -tlnp | grep :80 >/dev/null 2>&1; then
-            print_message $YELLOW "80端口被占用，尝试停止可能的服务..."
-            systemctl stop nginx apache2 2>/dev/null || true
-        fi
+        check_and_free_port80
     fi
 
     # 启动服务
