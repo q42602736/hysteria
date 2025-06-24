@@ -509,6 +509,7 @@ quic:
 bandwidth:
   up: $BANDWIDTH_UP
   down: $BANDWIDTH_DOWN
+ignoreClientBandwidth: true
 
 trafficStats:
   listen: 127.0.0.1:8080
