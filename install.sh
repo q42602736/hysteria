@@ -86,29 +86,46 @@ install_dependencies() {
     print_message $GREEN "依赖安装完成"
 }
 
-# 下载Hysteria2
+# 下载Hysteria2 SSPanel版本
 download_hysteria() {
-    print_title "下载Hysteria2"
-    
+    print_title "下载Hysteria2 SSPanel版本"
+
     local arch=$(detect_arch)
-    local download_url="https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-${arch}"
-    
+    # 使用您自己编译的支持SSPanel的版本
+    # 根据架构选择正确的文件名
+    case $arch in
+        "amd64")
+            local download_url="https://github.com/q42602736/hysteria/releases/download/1.0/hysteria-sspanel-linux-amd64"
+            ;;
+        "arm64")
+            local download_url="https://github.com/q42602736/hysteria/releases/download/1.0/hysteria-sspanel-linux-arm64"
+            ;;
+        "armv7")
+            local download_url="https://github.com/q42602736/hysteria/releases/download/1.0/hysteria-sspanel-linux-arm32"
+            ;;
+        *)
+            print_message $RED "不支持的架构: $arch"
+            exit 1
+            ;;
+    esac
+
     print_message $BLUE "检测到架构: $arch"
-    print_message $BLUE "下载地址: $download_url"
-    
+    print_message $BLUE "下载SSPanel支持版本: $download_url"
+
     # 创建目录
     mkdir -p $HYSTERIA_DIR
-    
+
     # 下载文件
-    print_message $YELLOW "正在下载Hysteria2..."
+    print_message $YELLOW "正在下载Hysteria2 SSPanel版本..."
     if curl -L -o "$HYSTERIA_DIR/$BINARY_NAME" "$download_url"; then
         chmod +x "$HYSTERIA_DIR/$BINARY_NAME"
-        print_message $GREEN "Hysteria2下载完成"
+        print_message $GREEN "Hysteria2 SSPanel版本下载完成"
     else
-        print_message $RED "下载失败"
+        print_message $RED "下载失败，请检查下载地址是否正确"
+        print_message $YELLOW "请确保您的GitHub仓库中有编译好的二进制文件"
         exit 1
     fi
-    
+
     # 验证下载
     if "$HYSTERIA_DIR/$BINARY_NAME" version >/dev/null 2>&1; then
         print_message $GREEN "Hysteria2验证成功"
@@ -116,6 +133,144 @@ download_hysteria() {
         print_message $RED "Hysteria2验证失败"
         exit 1
     fi
+}
+
+# 显示管理菜单
+show_management_menu() {
+    clear
+    print_title "Hysteria2 后端管理脚本"
+
+    # 显示当前状态
+    if systemctl is-active --quiet hysteria; then
+        print_message $GREEN "当前状态: 运行中"
+    else
+        print_message $RED "当前状态: 已停止"
+    fi
+
+    # 显示配置信息
+    if [[ -f "$CONFIG_FILE" ]]; then
+        echo
+        echo "当前配置:"
+        if grep -q "apiHost:" "$CONFIG_FILE"; then
+            EXISTING_PANEL=$(grep "apiHost:" "$CONFIG_FILE" | awk '{print $2}')
+            echo "  面板地址: $EXISTING_PANEL"
+        fi
+        if grep -q "nodeID:" "$CONFIG_FILE"; then
+            EXISTING_NODE_ID=$(grep "nodeID:" "$CONFIG_FILE" | awk '{print $2}')
+            echo "  节点ID: $EXISTING_NODE_ID"
+        fi
+        if grep -q "listen:" "$CONFIG_FILE"; then
+            EXISTING_PORT=$(grep "listen:" "$CONFIG_FILE" | awk '{print $2}' | sed 's/://')
+            echo "  监听端口: $EXISTING_PORT"
+        fi
+    fi
+
+    echo
+    echo "--- https://github.com/your-repo/hysteria2-sspanel ---"
+    echo "0. 修改配置"
+    echo
+    echo "1. 安装 Hysteria2"
+    echo "2. 更新 Hysteria2"
+    echo "3. 卸载 Hysteria2"
+    echo
+    echo "4. 启动 Hysteria2"
+    echo "5. 停止 Hysteria2"
+    echo "6. 重启 Hysteria2"
+    echo "7. 查看 Hysteria2 状态"
+    echo "8. 查看 Hysteria2 日志"
+    echo
+    echo "9. 设置 Hysteria2 开机自启"
+    echo "10. 取消 Hysteria2 开机自启"
+    echo
+    read -p "请输入选择 [0-10]: " menu_choice
+
+    case $menu_choice in
+        0)
+            # 备份现有配置
+            cp "$CONFIG_FILE" "$CONFIG_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+            print_message $BLUE "已备份现有配置"
+            return 1  # 继续配置收集
+            ;;
+        1)
+            if [[ -f "$HYSTERIA_DIR/$BINARY_NAME" ]]; then
+                print_message $YELLOW "Hysteria2 已安装，将重新安装"
+            fi
+            return 2  # 重新安装
+            ;;
+        2)
+            print_message $YELLOW "更新 Hysteria2..."
+            download_hysteria
+            systemctl restart hysteria
+            print_message $GREEN "更新完成"
+            exit 0
+            ;;
+        3)
+            uninstall
+            exit 0
+            ;;
+        4)
+            systemctl start hysteria
+            if systemctl is-active --quiet hysteria; then
+                print_message $GREEN "Hysteria2 启动成功"
+            else
+                print_message $RED "Hysteria2 启动失败"
+                diagnose_service
+            fi
+            echo
+            read -p "按任意键继续..." -n 1
+            show_management_menu
+            ;;
+        5)
+            systemctl stop hysteria
+            print_message $GREEN "Hysteria2 已停止"
+            echo
+            read -p "按任意键继续..." -n 1
+            show_management_menu
+            ;;
+        6)
+            systemctl restart hysteria
+            if systemctl is-active --quiet hysteria; then
+                print_message $GREEN "Hysteria2 重启成功"
+            else
+                print_message $RED "Hysteria2 重启失败"
+                diagnose_service
+            fi
+            echo
+            read -p "按任意键继续..." -n 1
+            show_management_menu
+            ;;
+        7)
+            diagnose_service
+            echo
+            read -p "按任意键继续..." -n 1
+            show_management_menu
+            ;;
+        8)
+            print_message $BLUE "查看 Hysteria2 日志 (按 Ctrl+C 退出)"
+            journalctl -u hysteria -f
+            echo
+            read -p "按任意键继续..." -n 1
+            show_management_menu
+            ;;
+        9)
+            systemctl enable hysteria
+            print_message $GREEN "已设置开机自启"
+            echo
+            read -p "按任意键继续..." -n 1
+            show_management_menu
+            ;;
+        10)
+            systemctl disable hysteria
+            print_message $GREEN "已取消开机自启"
+            echo
+            read -p "按任意键继续..." -n 1
+            show_management_menu
+            ;;
+        *)
+            print_message $RED "无效选择"
+            exit 1
+            ;;
+    esac
 }
 
 # 交互式配置收集
@@ -356,9 +511,29 @@ masquerade:
     url: $MASQ_URL
     rewriteHost: true
 
+# 出站规则配置
 outbounds:
   - name: direct
     type: direct
+    direct:
+      mode: auto  # 默认双栈模式
+  - name: ipv4_only
+    type: direct
+    direct:
+      mode: 4     # 强制使用IPv4
+  - name: ipv6_only
+    type: direct
+    direct:
+      mode: 6     # 强制使用IPv6
+
+# ACL分流规则
+acl:
+  inline:
+    # 1. 拒绝中国IP访问
+    - reject(geoip:cn)
+    
+    # 2. 拒绝中国网站访问
+    - reject(geosite:cn)
 
 ignoreClientBandwidth: false
 disableUDP: false
@@ -425,6 +600,79 @@ configure_firewall() {
     print_message $GREEN "防火墙配置完成"
 }
 
+# 诊断服务问题
+diagnose_service() {
+    print_title "服务诊断"
+
+    print_message $YELLOW "正在诊断Hysteria2服务问题..."
+
+    # 检查配置文件
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        print_message $RED "❌ 配置文件不存在: $CONFIG_FILE"
+        return 1
+    else
+        print_message $GREEN "✅ 配置文件存在"
+    fi
+
+    # 检查程序文件
+    if [[ ! -f "$HYSTERIA_DIR/$BINARY_NAME" ]]; then
+        print_message $RED "❌ 程序文件不存在: $HYSTERIA_DIR/$BINARY_NAME"
+        return 1
+    else
+        print_message $GREEN "✅ 程序文件存在"
+    fi
+
+    # 检查配置文件语法 (使用YAML语法检查)
+    if command -v python3 >/dev/null 2>&1; then
+        if python3 -c "import yaml; yaml.safe_load(open('$CONFIG_FILE'))" >/dev/null 2>&1; then
+            print_message $GREEN "✅ 配置文件YAML语法正确"
+        else
+            print_message $RED "❌ 配置文件YAML语法错误"
+            return 1
+        fi
+    else
+        # 简单检查配置文件关键字段
+        if grep -q "panelType:" "$CONFIG_FILE" && \
+           grep -q "sspanel:" "$CONFIG_FILE" && \
+           grep -q "listen:" "$CONFIG_FILE" && \
+           grep -q "auth:" "$CONFIG_FILE"; then
+            print_message $GREEN "✅ 配置文件基本结构正确"
+        else
+            print_message $RED "❌ 配置文件缺少必要字段"
+            return 1
+        fi
+    fi
+
+    # 检查端口占用
+    local port=$(grep "listen:" "$CONFIG_FILE" | awk '{print $2}' | sed 's/://')
+    if netstat -tlnp | grep ":$port " >/dev/null 2>&1; then
+        local process=$(netstat -tlnp | grep ":$port " | awk '{print $7}')
+        if [[ "$process" == *"hysteria"* ]]; then
+            print_message $GREEN "✅ 端口 $port 被Hysteria2正常占用"
+        else
+            print_message $RED "❌ 端口 $port 被其他进程占用: $process"
+            return 1
+        fi
+    else
+        print_message $YELLOW "⚠️  端口 $port 未被占用"
+    fi
+
+    # 检查服务状态
+    if systemctl is-active --quiet hysteria; then
+        print_message $GREEN "✅ 服务正在运行"
+    else
+        print_message $RED "❌ 服务未运行"
+        print_message $YELLOW "服务状态:"
+        systemctl status hysteria --no-pager -l || true
+        print_message $YELLOW "最近的错误日志:"
+        journalctl -u hysteria --since "10 minutes ago" --no-pager -l | tail -20 || true
+        return 1
+    fi
+
+    print_message $GREEN "✅ 服务诊断完成"
+    return 0
+}
+
 # 启动服务
 start_service() {
     print_title "启动Hysteria2服务"
@@ -444,9 +692,20 @@ start_service() {
         print_message $GREEN "服务启动成功"
     else
         print_message $RED "服务启动失败"
-        print_message $YELLOW "查看错误日志:"
-        journalctl -u hysteria --no-pager -l
-        exit 1
+        print_message $YELLOW "正在进行服务诊断..."
+
+        if diagnose_service; then
+            print_message $YELLOW "诊断完成，尝试重新启动..."
+            systemctl restart hysteria
+        else
+            print_message $RED "服务诊断发现问题"
+            print_message $YELLOW "建议操作:"
+            echo "1. 检查配置文件: cat $CONFIG_FILE"
+            echo "2. 查看详细日志: journalctl -u hysteria -f"
+            echo "3. 重新运行安装: $0"
+            echo "4. 手动启动测试: $HYSTERIA_DIR/$BINARY_NAME server -c $CONFIG_FILE"
+            exit 1
+        fi
     fi
 
     # 等待服务稳定
@@ -542,10 +801,49 @@ main() {
             uninstall
             exit 0
             ;;
+        "fix"|"repair")
+            check_root
+            print_title "Hysteria2 修复模式"
+            if diagnose_service; then
+                print_message $GREEN "服务运行正常，无需修复"
+            else
+                print_message $YELLOW "尝试修复服务..."
+                create_service
+                systemctl daemon-reload
+                systemctl restart hysteria
+                if systemctl is-active --quiet hysteria; then
+                    print_message $GREEN "✅ 服务修复成功"
+                else
+                    print_message $RED "❌ 服务修复失败"
+                    diagnose_service
+                fi
+            fi
+            exit 0
+            ;;
+        "restart")
+            check_root
+            print_title "重启Hysteria2服务"
+            systemctl restart hysteria
+            if systemctl is-active --quiet hysteria; then
+                print_message $GREEN "✅ 服务重启成功"
+            else
+                print_message $RED "❌ 服务重启失败"
+                diagnose_service
+            fi
+            exit 0
+            ;;
+        "status")
+            print_title "Hysteria2 状态检查"
+            diagnose_service
+            exit 0
+            ;;
         "help"|"-h"|"--help")
             echo "用法: $0 [选项]"
             echo "选项:"
             echo "  无参数    - 安装Hysteria2"
+            echo "  fix       - 修复服务问题"
+            echo "  restart   - 重启服务"
+            echo "  status    - 检查服务状态"
             echo "  uninstall - 卸载Hysteria2"
             echo "  help      - 显示帮助"
             exit 0
@@ -562,6 +860,15 @@ main() {
 
     # 执行安装流程
     check_root
+
+    # 首先检查是否已有配置，如果有则显示管理菜单
+    if [[ -f "$CONFIG_FILE" ]]; then
+        show_management_menu
+        # 管理菜单中的大部分操作都会直接exit
+        # 只有选择重新配置才会继续到这里
+    fi
+
+    # 只有首次安装或重新配置时才执行以下步骤
     install_dependencies
     download_hysteria
     collect_config
