@@ -86,22 +86,48 @@ install_dependencies() {
     print_message $GREEN "依赖安装完成"
 }
 
+# 获取最新版本号
+get_latest_version() {
+    # 尝试从GitHub API获取最新版本
+    local latest_version
+    if command -v curl >/dev/null 2>&1; then
+        latest_version=$(curl -s "https://api.github.com/repos/q42602736/hysteria/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' 2>/dev/null)
+    fi
+
+    # 如果API获取失败，使用默认版本
+    if [[ -z "$latest_version" ]]; then
+        latest_version="1.1"
+    fi
+
+    echo "$latest_version"
+}
+
 # 下载Hysteria2 SSPanel版本
 download_hysteria() {
     print_title "下载Hysteria2 SSPanel版本"
 
     local arch=$(detect_arch)
+    print_message $YELLOW "正在获取最新版本信息..."
+    local version=$(get_latest_version)
+
+    if [[ -z "$version" ]]; then
+        print_message $RED "无法获取版本信息"
+        exit 1
+    fi
+
+    print_message $GREEN "获取到最新版本: $version"
+
     # 使用您自己编译的支持SSPanel的版本
     # 根据架构选择正确的文件名
     case $arch in
         "amd64")
-            local download_url="https://github.com/q42602736/hysteria/releases/download/1.0/hysteria-sspanel-linux-amd64"
+            local download_url="https://github.com/q42602736/hysteria/releases/download/$version/hysteria-sspanel-linux-amd64"
             ;;
         "arm64")
-            local download_url="https://github.com/q42602736/hysteria/releases/download/1.0/hysteria-sspanel-linux-arm64"
+            local download_url="https://github.com/q42602736/hysteria/releases/download/$version/hysteria-sspanel-linux-arm64"
             ;;
         "armv7")
-            local download_url="https://github.com/q42602736/hysteria/releases/download/1.0/hysteria-sspanel-linux-arm32"
+            local download_url="https://github.com/q42602736/hysteria/releases/download/$version/hysteria-sspanel-linux-arm32"
             ;;
         *)
             print_message $RED "不支持的架构: $arch"
@@ -110,6 +136,7 @@ download_hysteria() {
     esac
 
     print_message $BLUE "检测到架构: $arch"
+    print_message $BLUE "使用版本: $version"
     print_message $BLUE "下载SSPanel支持版本: $download_url"
 
     # 创建目录
@@ -123,6 +150,7 @@ download_hysteria() {
     else
         print_message $RED "下载失败，请检查下载地址是否正确"
         print_message $YELLOW "请确保您的GitHub仓库中有编译好的二进制文件"
+        print_message $YELLOW "尝试的下载地址: $download_url"
         exit 1
     fi
 
@@ -273,65 +301,105 @@ show_management_menu() {
     esac
 }
 
+# 安全的读取用户输入函数
+safe_read() {
+    local prompt="$1"
+    local var_name="$2"
+    local default_value="$3"
+
+    # 确保在交互式终端中
+    if [[ ! -t 0 ]]; then
+        print_message $RED "错误：脚本需要在交互式终端中运行"
+        print_message $YELLOW "请直接在终端中运行此脚本，不要使用管道或重定向"
+        exit 1
+    fi
+
+    while true; do
+        if [[ -n "$default_value" ]]; then
+            echo -n "$prompt [默认: $default_value]: "
+        else
+            echo -n "$prompt: "
+        fi
+
+        # 始终显示输入内容，方便用户确认
+        read input
+
+        # 如果输入为空且有默认值，使用默认值
+        if [[ -z "$input" && -n "$default_value" ]]; then
+            input="$default_value"
+        fi
+
+        # 如果仍然为空，要求重新输入
+        if [[ -z "$input" ]]; then
+            print_message $RED "输入不能为空，请重新输入"
+            continue
+        fi
+
+        # 将值赋给指定变量
+        eval "$var_name='$input'"
+        break
+    done
+}
+
 # 交互式配置收集
 collect_config() {
     print_title "配置信息收集"
-    
+
+    print_message $YELLOW "请按提示输入配置信息，按 Ctrl+C 可随时退出"
+    echo
+
     # 面板信息
     print_message $CYAN "=== 面板配置 ==="
-    read -p "请输入面板地址 (如: https://panel.example.com): " PANEL_HOST
-    read -p "请输入面板API密钥: " API_KEY
-    read -p "请输入节点ID: " NODE_ID
-    
+    safe_read "请输入面板地址 (如: https://panel.example.com)" "PANEL_HOST"
+    safe_read "请输入面板API密钥" "API_KEY"
+    safe_read "请输入节点ID" "NODE_ID"
+
     # 服务器配置
     print_message $CYAN "=== 服务器配置 ==="
-    read -p "请输入监听端口 [默认: 1253]: " LISTEN_PORT
-    LISTEN_PORT=${LISTEN_PORT:-1253}
-    
-    read -p "请输入服务器域名 (如: node.example.com): " SERVER_DOMAIN
-    
+    safe_read "请输入监听端口" "LISTEN_PORT" "1253"
+    safe_read "请输入服务器域名 (如: node.example.com)" "SERVER_DOMAIN"
+
     # 混淆配置
     print_message $CYAN "=== 混淆配置 ==="
-    read -p "是否启用混淆? (y/n) [默认: y]: " ENABLE_OBFS
-    ENABLE_OBFS=${ENABLE_OBFS:-y}
-    
+    safe_read "是否启用混淆? (y/n)" "ENABLE_OBFS" "y"
+
     if [[ $ENABLE_OBFS == "y" || $ENABLE_OBFS == "Y" ]]; then
-        read -p "请输入混淆密码: " OBFS_PASSWORD
+        safe_read "请输入混淆密码" "OBFS_PASSWORD"
     fi
-    
+
     # 证书配置
     print_message $CYAN "=== 证书配置 ==="
     echo "请选择证书类型:"
     echo "1) ACME自动证书 (推荐)"
     echo "2) 自签名证书"
     echo "3) 手动指定证书文件"
-    read -p "请选择 [1-3]: " CERT_TYPE
-    
+    safe_read "请选择 [1-3]" "CERT_TYPE" "2"
+
     case $CERT_TYPE in
         1)
-            read -p "请输入邮箱地址: " ACME_EMAIL
+            safe_read "请输入邮箱地址" "ACME_EMAIL"
             ;;
         2)
             CERT_PATH="/etc/hysteria/server.crt"
             KEY_PATH="/etc/hysteria/server.key"
+            print_message $GREEN "将使用自签名证书: $CERT_PATH"
             ;;
         3)
-            read -p "请输入证书文件路径: " CERT_PATH
-            read -p "请输入私钥文件路径: " KEY_PATH
+            safe_read "请输入证书文件路径" "CERT_PATH"
+            safe_read "请输入私钥文件路径" "KEY_PATH"
             ;;
         *)
-            print_message $RED "无效选择"
-            exit 1
+            print_message $RED "无效选择，使用默认自签名证书"
+            CERT_TYPE=2
+            CERT_PATH="/etc/hysteria/server.crt"
+            KEY_PATH="/etc/hysteria/server.key"
             ;;
     esac
-    
+
     # 带宽配置
     print_message $CYAN "=== 带宽配置 ==="
-    read -p "请输入上行带宽 (如: 100 mbps) [默认: 1 gbps]: " BANDWIDTH_UP
-    BANDWIDTH_UP=${BANDWIDTH_UP:-"1 gbps"}
-
-    read -p "请输入下行带宽 (如: 200 mbps) [默认: 1 gbps]: " BANDWIDTH_DOWN
-    BANDWIDTH_DOWN=${BANDWIDTH_DOWN:-"1 gbps"}
+    safe_read "请输入上行带宽 (如: 100 mbps)" "BANDWIDTH_UP" "1 gbps"
+    safe_read "请输入下行带宽 (如: 200 mbps)" "BANDWIDTH_DOWN" "1 gbps"
 
     # 伪装网站配置
     print_message $CYAN "=== 伪装网站配置 ==="
@@ -349,8 +417,7 @@ collect_config() {
     echo "11) CNN新闻 (https://www.cnn.com)"
     echo "12) 自定义网站"
     echo "0) 随机选择 (推荐)"
-    read -p "请选择 [0-12] [默认: 0]: " MASQ_CHOICE
-    MASQ_CHOICE=${MASQ_CHOICE:-0}
+    safe_read "请选择 [0-12]" "MASQ_CHOICE" "0"
 
     # 预定义伪装网站列表
     MASQ_SITES=(
@@ -378,14 +445,16 @@ collect_config() {
             MASQ_URL="${MASQ_SITES[$((MASQ_CHOICE-1))]}"
             ;;
         12)
-            read -p "请输入自定义伪装网站URL: " MASQ_URL
+            safe_read "请输入自定义伪装网站URL" "MASQ_URL"
             ;;
         *)
-            print_message $YELLOW "无效选择，使用默认: Microsoft官网"
-            MASQ_URL="https://www.microsoft.com"
+            print_message $YELLOW "无效选择，使用默认: 随机选择"
+            MASQ_CHOICE=0
+            RANDOM_INDEX=$((RANDOM % ${#MASQ_SITES[@]}))
+            MASQ_URL="${MASQ_SITES[$RANDOM_INDEX]}"
             ;;
     esac
-    
+
     # 确认配置
     print_title "配置确认"
     echo "面板地址: $PANEL_HOST"
@@ -400,12 +469,12 @@ collect_config() {
     echo "下行带宽: $BANDWIDTH_DOWN"
     echo "伪装网站: $MASQ_URL"
     echo
-    
-    read -p "确认配置无误? (y/n) [默认: y]: " CONFIRM
-    CONFIRM=${CONFIRM:-y}
+
+    safe_read "确认配置无误? (y/n)" "CONFIRM" "y"
     if [[ $CONFIRM != "y" && $CONFIRM != "Y" ]]; then
-        print_message $YELLOW "配置已取消"
-        exit 0
+        print_message $YELLOW "配置已取消，重新开始配置..."
+        collect_config  # 递归调用重新配置
+        return
     fi
 }
 
